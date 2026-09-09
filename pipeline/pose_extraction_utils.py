@@ -45,17 +45,43 @@ def _track_peak_motion(frames_dict):
     return peak
 
 
-def select_primary_track(track_boxes, area_weight=0.5, motion_weight=0.5):
+def select_primary_track(track_boxes):
     """
     track_boxes: dict {track_id: {frame_idx: [x1, y1, x2, y2]}}
 
-    Combined area+motion score. Originally area-only, but that failed badly
-    on net-play shots (Short Flat Shot, Rush Shot) where both players stand
-    close together and end up similarly sized in frame - 40-55% of those
-    classes came back as near-coin-flip picks. Motion disambiguates most of
-    those (the player actually swinging shows a sharp displacement spike a
-    waiting player doesn't), though a residual ~1% of clips still need the
-    wrist-velocity tiebreak below or manual review.
+    Area-only selection - the player with the largest total bbox area across
+    the clip. This is the DEFAULT used by extract_one_clip. Deliberately not
+    blended with motion here: testing the blended score as a default (not
+    just an escalation for already-hard cases) showed it makes far MORE
+    clips ambiguous, not fewer - motion is noisy enough that blending it
+    into every decision drags down cases area alone was already confident
+    about. Motion stays as an escalation-only signal via
+    select_primary_track_combined, used exclusively on clips area-only
+    already flagged as genuinely hard.
+
+    Returns (primary_track_id, runner_up_to_winner_area_ratio).
+    """
+    if not track_boxes:
+        return None, 0.0
+
+    areas = {tid: _track_area(f) for tid, f in track_boxes.items()}
+    ranked = sorted(areas.items(), key=lambda kv: kv[1], reverse=True)
+    primary_id = ranked[0][0]
+
+    if len(ranked) > 1 and ranked[0][1] > 0:
+        ratio = ranked[1][1] / ranked[0][1]
+    else:
+        ratio = 0.0
+
+    return primary_id, ratio
+
+
+def select_primary_track_combined(track_boxes, area_weight=0.5, motion_weight=0.5):
+    """
+    Area+motion blended score. ESCALATION ONLY - call this on clips
+    select_primary_track already flagged ambiguous (ratio > threshold), not
+    as a general-purpose replacement for it. See select_primary_track's
+    docstring for why.
 
     Returns (primary_track_id, runner_up_to_winner_score_ratio).
     """
@@ -116,15 +142,22 @@ def select_primary_track_with_wrist_tiebreak(
     area_weight=0.5, motion_weight=0.5, ambiguity_threshold=0.6,
 ):
     """
-    Runs the normal cheap area+motion selection first. Only escalates to the
-    expensive wrist-velocity comparison (needs pose estimation on both
-    candidate tracks) if that first pass is still ambiguous.
+    Three-tier escalation: area-only first (cheap, confident for most
+    clips), then combined area+motion (only for clips area-only already
+    flagged ambiguous), then wrist velocity (only for clips still ambiguous
+    after that). Each tier is strictly more expensive than the last, which
+    is why cheaper/coarser signals are tried first.
 
     Returns (primary_id, ratio, method_used).
     """
-    primary_id, ratio = select_primary_track(track_boxes, area_weight, motion_weight)
+    primary_id, ratio = select_primary_track(track_boxes)
 
     if primary_id is None or ratio <= ambiguity_threshold:
+        return primary_id, ratio, "area"
+
+    primary_id, ratio = select_primary_track_combined(track_boxes, area_weight, motion_weight)
+
+    if ratio <= ambiguity_threshold:
         return primary_id, ratio, "area_motion"
 
     areas = {tid: _track_area(f) for tid, f in track_boxes.items()}
