@@ -258,7 +258,7 @@ def inference_topdown_safe(pose_model, frame, box):
     return keypoints, scores
 
 
-def extract_one_clip(video_path, detector, pose_model, n_frames=30, return_debug=False):
+def extract_one_clip(video_path, detector, pose_model, n_frames=30, return_debug=False, forced_primary_id=None):
     """
     Runs the full two-pass extraction on a single clip.
     Returns (keypoints_seq, meta) normally, or (keypoints_seq, meta, debug) if
@@ -281,9 +281,18 @@ def extract_one_clip(video_path, detector, pose_model, n_frames=30, return_debug
         for box, tid in zip(boxes_xyxy, track_ids):
             track_boxes.setdefault(int(tid), {})[frame_idx] = box
 
-    primary_id, area_ratio = select_primary_track(track_boxes)
-    if primary_id is None:
-        raise RuntimeError("no player track detected in this clip")
+    if forced_primary_id is not None:
+        if forced_primary_id not in track_boxes:
+            raise RuntimeError(
+                f"forced_primary_id={forced_primary_id} not found in this clip's "
+                f"tracks (available: {list(track_boxes.keys())}) - detection may have "
+                f"behaved differently on this re-run than it did originally"
+            )
+        primary_id, area_ratio = forced_primary_id, 0.0
+    else:
+        primary_id, area_ratio = select_primary_track(track_boxes)
+        if primary_id is None:
+            raise RuntimeError("no player track detected in this clip")
 
     valid_frames = sorted(track_boxes[primary_id].keys())
     idx_map = standardize_indices(len(valid_frames), n_frames)
