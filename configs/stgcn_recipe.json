@@ -1,0 +1,30 @@
+{
+  "model": "ST-GCN",
+  "normalisation": "body_court",
+  "selected": "combination",
+  "changes_from_baseline": {
+    "weight_decay": 0.005,
+    "target_per_class": 300
+  },
+  "augmentation": "advanced",
+  "min_native_frames": 5,
+  "batch_size": 16,
+  "lr": 0.01,
+  "momentum": 0.9,
+  "gamma": 0.1,
+  "select_metric": "top1",
+  "weight_decay": 0.005,
+  "label_smoothing": 0.0,
+  "schedule": "step10",
+  "target_per_class": 300,
+  "num_epochs": 60,
+  "patience": 20,
+  "tuning": {
+    "seeds": [
+      11,
+      22
+    ],
+    "val_top1": 0.7612,
+    "baseline_val_top1": 0.7394
+  }
+}
