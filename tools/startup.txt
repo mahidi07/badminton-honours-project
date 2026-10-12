@@ -1,0 +1,16 @@
+ls /workspace
+
+source /workspace/venv/bin/activate
+
+mkdir -p ~/.ssh
+cp /workspace/.ssh_keys/id_ed25519* ~/.ssh/
+chmod 600 ~/.ssh/id_ed25519
+ssh -o StrictHostKeyChecking=accept-new -T git@github.com
+
+git config --global user.email "mahidiri07@gmail.com"
+git config --global user.name "mahidi07"
+
+cp /workspace/clearml_config/clearml.conf ~/clearml.conf
+
+pip install ipykernel -c /workspace/badminton-honours-project/constraints.txt
+python -m ipykernel install --user --name=badminton-venv --display-name "Python (badminton venv)"
