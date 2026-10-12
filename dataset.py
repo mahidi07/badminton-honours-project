@@ -16,6 +16,7 @@ depend on whether normalisation is applied afterwards.
 """
 
 import os
+from functools import partial
 
 import numpy as np
 import pandas as pd
@@ -114,16 +115,18 @@ def hip_centre(keypoints):
 # advanced augmentations: (T, 17, 3) x, y, confidence in, same shape out
 # ---------------------------------------------------------------------------
 
-def aug_limb_rotation(keypoints, max_angle_deg=12.0, p=0.5):
+def aug_limb_rotation(keypoints, max_angle_deg=12.0, p=0.5, strength=1.0):
     """
     Rotates one limb about its proximal joint (shoulder, elbow, hip or knee) by a fixed small angle
     across the whole clip. Only the joints further along that limb move, so bone lengths are kept and
-    the rest of the body is untouched.
+    the rest of the body is untouched. `strength` scales max_angle_deg, for the augmentation strength
+    experiment; 1.0 is the default used everywhere else.
     """
     if np.random.rand() > p:
         return keypoints
     kp = keypoints.copy()
     pivot = int(np.random.choice(list(LIMB_CHAINS)))
+    max_angle_deg = max_angle_deg * strength
     angle = np.radians(np.random.uniform(-max_angle_deg, max_angle_deg))
     rot = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]], dtype=np.float32)
     moving = LIMB_CHAINS[pivot]
@@ -132,32 +135,35 @@ def aug_limb_rotation(keypoints, max_angle_deg=12.0, p=0.5):
     return kp
 
 
-def aug_confidence_scaled_noise(keypoints, base_frac=0.04, p=0.5):
+def aug_confidence_scaled_noise(keypoints, base_frac=0.04, p=0.5, strength=1.0):
     """
     Gaussian noise on x/y with standard deviation base_frac * body height * (1 - confidence), so joints
     the pose model was unsure about move more. At body height 135 px this is about 3.8 px for a joint at
-    confidence 0.3 and 1.6 px at 0.7.
+    confidence 0.3 and 1.6 px at 0.7. `strength` scales base_frac for the augmentation strength experiment.
     """
     if np.random.rand() > p:
         return keypoints
     kp = keypoints.copy()
-    std = base_frac * body_height(kp) * (1.0 - kp[:, :, 2:3])
+    std = (base_frac * strength) * body_height(kp) * (1.0 - kp[:, :, 2:3])
     kp[:, :, :2] += np.random.randn(*kp[:, :, :2].shape).astype(np.float32) * std
     return kp
 
 
-def aug_joint_masking(keypoints, max_joints=2, max_span=5, p=0.5):
+def aug_joint_masking(keypoints, max_joints=2, max_span=5, p=0.5, strength=1.0):
     """
     Simulates a missed or occluded joint the way the pose model actually reports one: for a short span
     the position is a rough guess (linear between the frames either side, plus noise of 5% of body height)
     and the confidence drops to near zero. The previous version zeroed the coordinates, which in pixel
-    units sent the joint to the corner of the frame.
+    units sent the joint to the corner of the frame. `strength` scales max_joints and max_span for the
+    augmentation strength experiment.
     """
     if np.random.rand() > p:
         return keypoints
     kp = keypoints.copy()
     T = kp.shape[0]
     h = body_height(kp)
+    max_joints = max(1, round(max_joints * strength))
+    max_span = max(1, round(max_span * strength))
     for j in np.random.choice(NUM_JOINTS, size=np.random.randint(1, max_joints + 1), replace=False):
         span = np.random.randint(1, max_span + 1)
         start = np.random.randint(0, T - span + 1)
@@ -169,14 +175,16 @@ def aug_joint_masking(keypoints, max_joints=2, max_span=5, p=0.5):
     return kp
 
 
-def aug_temporal_warp(keypoints, max_warp=0.4, num_control_points=4, p=0.5):
+def aug_temporal_warp(keypoints, max_warp=0.4, num_control_points=4, p=0.5, strength=1.0):
     """
     Smooth non uniform resampling in time: a few interior control points are shifted, so one part of the
     shot is stretched and another compressed. Endpoints stay fixed and time never runs backwards.
+    `strength` scales max_warp for the augmentation strength experiment.
     """
     if np.random.rand() > p:
         return keypoints
     T = keypoints.shape[0]
+    max_warp = min(max_warp * strength, 0.95)
     control_x = np.linspace(0, T - 1, num_control_points + 2)
     spacing = (T - 1) / (num_control_points + 1)
     control_y = control_x.copy()
@@ -191,6 +199,25 @@ def aug_temporal_warp(keypoints, max_warp=0.4, num_control_points=4, p=0.5):
 
 
 ADVANCED_AUGMENTATIONS = [aug_limb_rotation, aug_confidence_scaled_noise, aug_joint_masking, aug_temporal_warp]
+
+def scaled_advanced_augmentations(strength=1.0):
+    """
+    The advanced bundle at a given magnitude multiplier (1.0 is the default used in every other notebook).
+    Returns functions of one argument (keypoints), each with its strength baked in via a default kwarg, so
+    they can be registered into AUGMENTATION_POLICIES exactly like the originals: ds.AUGMENTATION_POLICIES
+    ["advanced_1.5x"] = ds.scaled_advanced_augmentations(1.5).
+    """
+    import functools
+    return [functools.partial(fn, strength=strength) for fn in ADVANCED_AUGMENTATIONS]
+
+
+# same four techniques, applied more often and with larger magnitudes; a tuning arm for the recipe experiments
+ADVANCED_STRONG_AUGMENTATIONS = [
+    partial(aug_limb_rotation, max_angle_deg=20.0, p=0.7),
+    partial(aug_confidence_scaled_noise, base_frac=0.06, p=0.7),
+    partial(aug_joint_masking, max_joints=3, max_span=6, p=0.7),
+    partial(aug_temporal_warp, max_warp=0.5, p=0.7),
+]
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +285,7 @@ AUGMENTATION_POLICIES = {
     "none": [],
     "basic": BASIC_AUGMENTATIONS,
     "advanced": ADVANCED_AUGMENTATIONS,
+    "advanced_strong": ADVANCED_STRONG_AUGMENTATIONS,
 }
 
 
@@ -293,8 +321,12 @@ class BadmintonPoseDataset(Dataset):
     """
     manifest: rows for one split (filepath, class_name, split), cleaning already applied.
     keypoints_root: e.g. /workspace/data/keypoints_interp.
-    augmentation_policy: "none", "basic" or "advanced"; only ever applied to train rows.
+    augmentation_policy: "none", "basic", "advanced" or "advanced_strong"; only ever applied to train rows.
     normalisation: "pixel" (stored units) or "body" (hip centred, body height units).
+    augment_classes: optional set of class names; when given, augmentation is applied only to training clips
+        of those classes (class conditional augmentation). None means every training clip.
+    A manifest may carry a "root" column; rows with a string there are read from that folder instead of
+    keypoints_root (used for the pre generated synthetic clips of the offline augmentation protocol).
 
     Each item:
         keypoints (T, 17, 3)  x, y, confidence
@@ -304,7 +336,8 @@ class BadmintonPoseDataset(Dataset):
         label, filepath
     """
 
-    def __init__(self, manifest, keypoints_root, class_to_id, augmentation_policy="none", normalisation="pixel"):
+    def __init__(self, manifest, keypoints_root, class_to_id, augmentation_policy="none", normalisation="pixel",
+                 augment_classes=None):
         if augmentation_policy not in AUGMENTATION_POLICIES:
             raise ValueError(f"augmentation_policy must be one of {list(AUGMENTATION_POLICIES)}")
         if normalisation not in NORMALISATIONS:
@@ -314,6 +347,7 @@ class BadmintonPoseDataset(Dataset):
         self.class_to_id = class_to_id
         self.augmentation_policy = augmentation_policy
         self.normalisation = normalisation
+        self.augment_classes = None if augment_classes is None else set(augment_classes)
 
     def __len__(self):
         return len(self.manifest)
@@ -321,9 +355,11 @@ class BadmintonPoseDataset(Dataset):
     def __getitem__(self, idx):
         row = self.manifest.iloc[idx]
         stem = os.path.splitext(os.path.basename(row["filepath"]))[0]
-        keypoints = np.load(os.path.join(self.keypoints_root, row["class_name"], stem + ".npy")).astype(np.float32)
+        root = row.get("root", None)
+        root = root if isinstance(root, str) else self.keypoints_root
+        keypoints = np.load(os.path.join(root, row["class_name"], stem + ".npy")).astype(np.float32)
 
-        if row["split"] == "train":
+        if row["split"] == "train" and (self.augment_classes is None or row["class_name"] in self.augment_classes):
             for aug_fn in AUGMENTATION_POLICIES[self.augmentation_policy]:
                 keypoints = aug_fn(keypoints)
 
@@ -376,6 +412,73 @@ class ClassBalancedSampler(torch.utils.data.Sampler):
 def build_class_balanced_sampler(manifest, target_per_class=500, seed=None):
     """Sampler for DataLoader(..., sampler=...). Pass the same train manifest the Dataset was built from."""
     return ClassBalancedSampler(manifest, target_per_class=target_per_class, seed=seed)
+
+
+def mixup_batch(batch, alpha=0.2, num_classes=18):
+    """
+    Mixup for skeleton batches (Zhang et al., 2018, adapted from images to pose sequences). Blends every
+    tensor field (keypoints, bone, velocity, court) between each clip and a random other clip in the same
+    batch by the same lambda, and returns soft labels for the loss instead of replacing "label" in place.
+    lam is drawn once per batch, close to 0 or 1 most of the time when alpha < 1 so most mixed batches stay
+    close to one real clip rather than an even blend.
+    """
+    import numpy as np
+    import torch
+
+    lam = float(np.random.beta(alpha, alpha)) if alpha > 0 else 1.0
+    perm = torch.randperm(batch["keypoints"].shape[0])
+    mixed = dict(batch)
+    for key in ("keypoints", "bone", "velocity", "court"):
+        mixed[key] = lam * batch[key] + (1 - lam) * batch[key][perm]
+    y_a = torch.nn.functional.one_hot(batch["label"], num_classes).float()
+    y_b = torch.nn.functional.one_hot(batch["label"][perm], num_classes).float()
+    mixed["soft_label"] = lam * y_a + (1 - lam) * y_b
+    return mixed
+
+
+def build_offline_augmented_set(train_manifest, keypoints_root, out_root, target=500, seed=0, policy="basic"):
+    """
+    The offline protocol used in the first version of this work: every class with fewer than `target` training
+    clips is built up to `target` by writing synthetic clips to disk, each an augmented copy of a randomly
+    chosen training clip of that class (parents are cycled so each is used about equally often). The clips
+    are generated once and fixed, unlike online augmentation, which draws a fresh variation every epoch.
+
+    Only training clips are ever used as parents, so nothing derived from a validation or test clip can enter
+    the training set. Returns manifest rows for the synthetic clips (split "train", with a "root" column that
+    points at out_root and a "parent" column naming the source clip).
+    """
+    import pandas as pd
+
+    rng = np.random.RandomState(seed)
+    transforms = AUGMENTATION_POLICIES[policy]
+    rows = []
+    train = train_manifest[train_manifest["split"] == "train"]
+    for class_name, group in train.groupby("class_name"):
+        parents = group.reset_index(drop=True)
+        needed = target - len(parents)
+        if needed <= 0:
+            continue
+        order = []
+        while len(order) < needed:
+            order.extend(rng.permutation(len(parents)).tolist())
+        os.makedirs(os.path.join(out_root, class_name), exist_ok=True)
+        for j, p in enumerate(order[:needed]):
+            parent = parents.iloc[p]
+            stem = os.path.splitext(os.path.basename(parent["filepath"]))[0]
+            clip = np.load(os.path.join(keypoints_root, class_name, stem + ".npy")).astype(np.float32)
+            for _ in range(10):                       # make sure the copy actually differs from its parent
+                np.random.seed(int(rng.randint(0, 2**31 - 1)))
+                out = clip
+                for fn in transforms:
+                    out = fn(out)
+                if not np.array_equal(out, clip):
+                    break
+            new_stem = f"{stem}__aug{j:03d}"
+            np.save(os.path.join(out_root, class_name, new_stem + ".npy"), out.astype(np.float32))
+            rows.append({"filepath": f"{class_name}/{new_stem}.mp4", "class_name": class_name,
+                         "class_id": parent.get("class_id", -1), "split": "train", "root": out_root,
+                         "parent": parent["filepath"]})
+    return pd.DataFrame(rows)
 
 
 def load_filtered_manifest(manifest_path, extraction_log_path, repair_log_path=None, min_native_frames=None):

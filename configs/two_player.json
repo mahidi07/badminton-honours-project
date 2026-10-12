@@ -1,0 +1,74 @@
+{
+  "experiment": "two_player",
+  "seeds": [
+    77,
+    88
+  ],
+  "select_metric": "composite",
+  "n_clips": 7810,
+  "rule": {
+    "min_gain_top1": 0.005,
+    "max_mca_drop": 0.01
+  },
+  "arms_mean": {
+    "old_pick": {
+      "val_top1": 0.7451984635083226,
+      "val_mca": 0.6254587678318255,
+      "val_composite": 0.6853286156700741,
+      "train_top1": 0.88722586841684,
+      "best_epoch": 29.0
+    },
+    "near": {
+      "val_top1": 0.7535211267605634,
+      "val_mca": 0.6274162805111017,
+      "val_composite": 0.6904687036358326,
+      "train_top1": 0.8836241395870018,
+      "best_epoch": 37.0
+    },
+    "far": {
+      "val_top1": 0.704225352112676,
+      "val_mca": 0.5491567355365838,
+      "val_composite": 0.62669104382463,
+      "train_top1": 0.840323355210501,
+      "best_epoch": 33.5
+    },
+    "both": {
+      "val_top1": 0.795134443021767,
+      "val_mca": 0.6760974402626683,
+      "val_composite": 0.7356159416422177,
+      "train_top1": 0.904594205218505,
+      "best_epoch": 25.0
+    }
+  },
+  "selected": "both",
+  "subset_accuracy": {
+    "old_pick": {
+      "all": 74.52,
+      "far found": 74.51,
+      "far not found": 75.0,
+      "match clips": 73.24,
+      "drill clips": 96.51
+    },
+    "near": {
+      "all": 75.35,
+      "far found": 75.69,
+      "far not found": 59.38,
+      "match clips": 74.19,
+      "drill clips": 95.35
+    },
+    "far": {
+      "all": 70.42,
+      "far found": 70.98,
+      "far not found": 43.75,
+      "match clips": 69.51,
+      "drill clips": 86.05
+    },
+    "both": {
+      "all": 79.51,
+      "far found": 79.93,
+      "far not found": 59.38,
+      "match clips": 78.66,
+      "drill clips": 94.19
+    }
+  }
+}

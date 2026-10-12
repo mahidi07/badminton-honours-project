@@ -1,0 +1,13 @@
+{
+  "selected": "advanced",
+  "policy": "advanced",
+  "balanced": true,
+  "tuning": {
+    "seeds": [
+      55,
+      66
+    ],
+    "val_top1": 0.7439180537772088,
+    "advanced_val_top1": 0.7439180537772088
+  }
+}

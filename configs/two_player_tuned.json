@@ -1,0 +1,93 @@
+{
+  "tune_seeds": [
+    77,
+    88
+  ],
+  "selected": {
+    "old_pick": "base",
+    "near": "base",
+    "both": "slow_sched"
+  },
+  "grid": {
+    "lr0.005": {
+      "lr": 0.005
+    },
+    "lr0.02": {
+      "lr": 0.02
+    },
+    "wd0.002": {
+      "weight_decay": 0.002
+    },
+    "wd0.01": {
+      "weight_decay": 0.01
+    },
+    "slow_sched": {
+      "step_size": 15,
+      "gamma": 0.3
+    }
+  },
+  "min_gain": 0.5,
+  "max_mca_drop": 1.0,
+  "validation_means": [
+    {
+      "arm": "both",
+      "recipe_name": "base",
+      "val_top1": 79.51,
+      "val_top5": 95.97,
+      "val_mca": 67.61,
+      "val_macro_f1": 69.72,
+      "val_composite": 73.56,
+      "n seeds": 2
+    },
+    {
+      "arm": "both",
+      "recipe_name": "lr0.005",
+      "val_top1": 79.96,
+      "val_top5": 96.16,
+      "val_mca": 68.73,
+      "val_macro_f1": 70.92,
+      "val_composite": 74.34,
+      "n seeds": 2
+    },
+    {
+      "arm": "both",
+      "recipe_name": "lr0.02",
+      "val_top1": 79.83,
+      "val_top5": 96.54,
+      "val_mca": 65.62,
+      "val_macro_f1": 67.47,
+      "val_composite": 72.73,
+      "n seeds": 2
+    },
+    {
+      "arm": "both",
+      "recipe_name": "slow_sched",
+      "val_top1": 80.35,
+      "val_top5": 96.22,
+      "val_mca": 69.49,
+      "val_macro_f1": 71.98,
+      "val_composite": 74.92,
+      "n seeds": 2
+    },
+    {
+      "arm": "both",
+      "recipe_name": "wd0.002",
+      "val_top1": 80.35,
+      "val_top5": 96.09,
+      "val_mca": 68.73,
+      "val_macro_f1": 71.21,
+      "val_composite": 74.54,
+      "n seeds": 2
+    },
+    {
+      "arm": "both",
+      "recipe_name": "wd0.01",
+      "val_top1": 80.22,
+      "val_top5": 96.22,
+      "val_mca": 65.42,
+      "val_macro_f1": 66.76,
+      "val_composite": 72.82,
+      "n seeds": 2
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "experiment": "hybrid_diagnostics",
+  "sequence_pathway_justified": false,
+  "best_variant": "LSTM pose",
+  "rescue_difference_points": -1.93,
+  "ci_points": [
+    -6.34,
+    2.49
+  ],
+  "rule": {
+    "min_margin_points": 5.0,
+    "interval_above_zero": true
+  }
+}

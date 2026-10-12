@@ -1,0 +1,27 @@
+{
+  "experiment": "leave_group_out",
+  "groups_carrying_information": [
+    "no_racket_arm",
+    "no_off_arm",
+    "no_arms",
+    "no_head",
+    "no_lower_body"
+  ],
+  "groups_specific_to_confusable": [
+    "no_arms",
+    "no_lower_body"
+  ],
+  "racket_vs_off_arm_top1_difference": -0.45,
+  "top1_change_by_group": {
+    "no_racket_arm": -2.43,
+    "no_off_arm": -1.98,
+    "no_arms": -2.24,
+    "no_head": -1.98,
+    "no_lower_body": -2.43
+  },
+  "rules": {
+    "min_drop_points": 1.5,
+    "min_seed_drop_points": 0.5,
+    "min_specific_points": 3.0
+  }
+}

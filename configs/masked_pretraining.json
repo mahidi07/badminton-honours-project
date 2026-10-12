@@ -1,0 +1,77 @@
+{
+  "experiment": "masked_pose_pretraining",
+  "seeds": [
+    77,
+    88
+  ],
+  "select_metric": "composite",
+  "rule": {
+    "min_gain_top1": 0.005,
+    "max_mca_drop": 0.01
+  },
+  "pretrain": {
+    "epochs": 100,
+    "batch_size": 64,
+    "lr": 0.001,
+    "weight_decay": 0.05,
+    "grad_clip": 1.0,
+    "joint_p": 0.35,
+    "span": [
+      8,
+      15
+    ],
+    "block_p": 0.5,
+    "block": [
+      4,
+      8
+    ],
+    "dec_dim": 128,
+    "dec_layers": 2,
+    "dec_heads": 4,
+    "augmentation": "basic"
+  },
+  "pretrain_val_error": [
+    {
+      "seed": 77,
+      "model": 0.011633206448035224,
+      "zero": 0.4796688612705079,
+      "static": 0.2686957255936618,
+      "train_final": 0.01651512122717262
+    },
+    {
+      "seed": 88,
+      "model": 0.011336542714974243,
+      "zero": 0.4796688612705079,
+      "static": 0.2686957255936618,
+      "train_final": 0.016588465718572663
+    }
+  ],
+  "arms_mean": {
+    "scratch": {
+      "val_top1": 0.7458386683738796,
+      "val_mca": 0.6499272676604386,
+      "val_composite": 0.6978829680171591,
+      "val_limited_recall": 0.5820114321952556,
+      "train_top1": 0.9126968503937007,
+      "best_epoch": 23.5
+    },
+    "pretrained": {
+      "val_top1": 0.7663252240717029,
+      "val_mca": 0.6640558327967621,
+      "val_composite": 0.7151905284342326,
+      "val_limited_recall": 0.5852144179350061,
+      "train_top1": 0.9901082677165354,
+      "best_epoch": 40.0
+    },
+    "pretrained_lowlr": {
+      "val_top1": 0.734955185659411,
+      "val_mca": 0.6362528898068438,
+      "val_composite": 0.6856040377331274,
+      "val_limited_recall": 0.5781399972576443,
+      "train_top1": 0.8668799212598426,
+      "best_epoch": 24.5
+    }
+  },
+  "selected": "pretrained",
+  "mean_best_epoch": 40.0
+}

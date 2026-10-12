@@ -1,0 +1,24 @@
+{
+  "experiment": "joint_ablation",
+  "arm_pathway_justified": false,
+  "confusable_classes": [
+    "Lift",
+    "Block",
+    "Drop Shot",
+    "Push Shot",
+    "Cut",
+    "Smash",
+    "Flat Shot"
+  ],
+  "racket_arm_selectivity_confusable_pts": -8.54,
+  "racket_arm_selectivity_other_pts": -12.96,
+  "difference_pts": 4.42,
+  "ci_pts": [
+    0.28,
+    8.9
+  ],
+  "rule": {
+    "min_margin_points": 5.0,
+    "interval_above_zero": true
+  }
+}

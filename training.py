@@ -63,8 +63,12 @@ def seed_worker(worker_id):
 # ---------------------------------------------------------------------------
 
 def build_loaders(manifest, keypoints_root, class_to_id, augmentation, normalisation, seed,
-                  batch_size=16, eval_batch_size=64, target_per_class=500, num_workers=4):
+                  batch_size=16, eval_batch_size=64, target_per_class=500, num_workers=4, eval_workers=4,
+                  balanced=True, augment_classes=None):
     """
+    augment_classes restricts augmentation to training clips of those classes (None: all classes).
+    balanced=False trains on the natural class frequencies (plain shuffling, no oversampling); used only to
+    measure how much of an augmentation effect is really class balancing.
     Returns loaders for one run. The class balanced sampler and the worker generator are created here, fresh,
     for every run: reusing a sampler across runs carries its epoch counter over and breaks seeding.
         train       augmented, class balanced, used for gradient steps
@@ -73,14 +77,16 @@ def build_loaders(manifest, keypoints_root, class_to_id, augmentation, normalisa
     """
     parts = {s: manifest[manifest["split"] == s].reset_index(drop=True) for s in SPLITS}
     make = lambda split, aug: ds.BadmintonPoseDataset(parts[split], keypoints_root, class_to_id,
-                                                      augmentation_policy=aug, normalisation=normalisation)
+                                                      augmentation_policy=aug, normalisation=normalisation,
+                                                      augment_classes=augment_classes)
     generator = torch.Generator()
     generator.manual_seed(seed)
-    eval_kwargs = dict(batch_size=eval_batch_size, shuffle=False, num_workers=num_workers, pin_memory=True,
-                       persistent_workers=num_workers > 0)
+    eval_kwargs = dict(batch_size=eval_batch_size, shuffle=False, num_workers=eval_workers, pin_memory=True,
+                       persistent_workers=eval_workers > 0)
     return {
         "train": DataLoader(make("train", augmentation), batch_size=batch_size,
-                            sampler=ds.build_class_balanced_sampler(parts["train"], target_per_class, seed=seed),
+                            **(dict(sampler=ds.build_class_balanced_sampler(parts["train"], target_per_class, seed=seed))
+                               if balanced else dict(shuffle=True)),
                             num_workers=num_workers, pin_memory=True, persistent_workers=num_workers > 0,
                             worker_init_fn=seed_worker, generator=generator),
         "train_eval": DataLoader(make("train", "none"), **eval_kwargs),
@@ -125,27 +131,52 @@ def evaluate(model, loader, forward, device):
 
 def train_model(model, forward, loaders, optimizer, scheduler, criterion, device, logger,
                 num_epochs=60, patience=20, select_metric="top1", grad_clip=None, scheduler_per_step=False,
-                print_every=5):
+                print_every=5, splits=SPLITS, mixup_alpha=0.0, num_classes=None, ema_decay=None):
     """
     Trains with early stopping on the validation metric `select_metric` and returns (best_state, history,
     best_epoch). The scheduler steps once per epoch unless scheduler_per_step is True.
+
+    mixup_alpha > 0 enables mixup (Zhang et al., 2018) on the training batches only: soft cross entropy
+    against blended labels, via dataset.mixup_batch. num_classes is required when mixup_alpha > 0. Evaluation
+    (train_eval/val/test) is never mixed.
+
+    ema_decay: when set (for example 0.999), an exponential moving average of the weights (and batch norm statistics) is kept
+    and is what gets evaluated, selected and returned; training itself continues on the live weights.
+    select_metric may be "composite", the mean of validation top1 and validation MCA.
+
+    splits: which splits are evaluated and logged each epoch. Tuning experiments pass ("train", "val") so the
+    test set is never evaluated while hyperparameters are being chosen.
     """
     history, best_state, best_value, best_epoch, stale = [], None, -np.inf, -1, 0
+    ema_state = {k: v.detach().clone() for k, v in model.state_dict().items()} if ema_decay else None
 
     for epoch in range(num_epochs):
         start = time.time()
         model.train()
         batch_loss, n_seen = 0.0, 0
         for batch in loaders["train"]:
-            y = batch["label"].to(device)
+            if mixup_alpha > 0:
+                batch = ds.mixup_batch(batch, alpha=mixup_alpha, num_classes=num_classes)
+                y = batch["soft_label"].to(device)
+                step_criterion = lambda logits, target: -(target * torch.log_softmax(logits, dim=1)).sum(1).mean()
+            else:
+                y = batch["label"].to(device)
+                step_criterion = criterion
             optimizer.zero_grad(set_to_none=True)
-            loss = criterion(forward(model, batch, device), y)
+            loss = step_criterion(forward(model, batch, device), y)
             if not torch.isfinite(loss):
                 raise FloatingPointError(f"non finite loss at epoch {epoch}")
             loss.backward()
             if grad_clip is not None:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
             optimizer.step()
+            if ema_state is not None:
+                with torch.no_grad():
+                    for k, v in model.state_dict().items():
+                        if v.dtype.is_floating_point:
+                            ema_state[k].mul_(ema_decay).add_(v.detach(), alpha=1.0 - ema_decay)
+                        else:
+                            ema_state[k].copy_(v)
             if scheduler_per_step:
                 scheduler.step()
             batch_loss += loss.item() * len(y)
@@ -155,16 +186,20 @@ def train_model(model, forward, loaders, optimizer, scheduler, criterion, device
             scheduler.step()
         train_time = time.time() - start
 
-        results = {s: evaluate(model, loaders["train_eval" if s == "train" else s], forward, device) for s in SPLITS}
+        if ema_state is not None:
+            live_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+            model.load_state_dict(ema_state)
+        results = {s: evaluate(model, loaders["train_eval" if s == "train" else s], forward, device) for s in splits}
         row = {"epoch": epoch, "lr": lr, "train_batches_loss": batch_loss / n_seen, "epoch_seconds": train_time}
-        for s in SPLITS:
+        for s in splits:
             for m in ("loss",) + METRICS:
                 row[f"{s}_{m}"] = results[s][m]
+        row["val_composite"] = 0.5 * (row["val_top1"] + row["val_mca"])
         history.append(row)
 
         logger.report_scalar("loss", "train_batches", row["train_batches_loss"], iteration=epoch)
         for m in ("loss",) + METRICS:
-            for s in SPLITS:
+            for s in splits:
                 logger.report_scalar(m, s, row[f"{s}_{m}"], iteration=epoch)
         logger.report_scalar("learning rate", "lr", lr, iteration=epoch)
         logger.report_scalar("time", "train seconds per epoch", train_time, iteration=epoch)
@@ -175,6 +210,8 @@ def train_model(model, forward, loaders, optimizer, scheduler, criterion, device
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
         else:
             stale += 1
+        if ema_state is not None:
+            model.load_state_dict(live_state)
 
         if epoch % print_every == 0 or stale == 0:
             print(f"epoch {epoch:3d}  loss {row['train_batches_loss']:.3f}  "
@@ -192,11 +229,11 @@ def train_model(model, forward, loaders, optimizer, scheduler, criterion, device
 # reporting
 # ---------------------------------------------------------------------------
 
-def _learning_curves(history, best_epoch, title):
+def _learning_curves(history, best_epoch, title, splits=SPLITS):
     fig, axes = plt.subplots(1, 3, figsize=(13, 3.6))
     colours = {"train": "#4c72b0", "val": "#dd8452", "test": "#55a868"}
     axes[0].plot(history["epoch"], history["train_batches_loss"], color="grey", ls=":", label="train batches (augmented)")
-    for s in SPLITS:
+    for s in splits:
         axes[0].plot(history["epoch"], history[f"{s}_loss"], color=colours[s], label=s)
         axes[1].plot(history["epoch"], history[f"{s}_top1"], color=colours[s], label=s)
         axes[2].plot(history["epoch"], history[f"{s}_mca"], color=colours[s], label=s)
@@ -210,7 +247,7 @@ def _learning_curves(history, best_epoch, title):
     return fig
 
 
-def _confusion_figure(cm, class_names, title):
+def _confusion_figure(cm, class_names, title, split="test"):
     norm = cm / np.maximum(cm.sum(axis=1, keepdims=True), 1)
     fig, ax = plt.subplots(figsize=(9, 8))
     im = ax.imshow(norm, cmap="Blues", vmin=0, vmax=1)
@@ -224,65 +261,69 @@ def _confusion_figure(cm, class_names, title):
                         color="white" if norm[i, j] > 0.5 else "black")
     ax.set_xlabel("predicted")
     ax.set_ylabel("true")
-    ax.set_title(f"{title}: test confusion (colour: row normalised, numbers: clips)", fontsize=9)
+    ax.set_title(f"{title}: {split} confusion (colour: row normalised, numbers: clips)", fontsize=9)
     fig.colorbar(im, ax=ax, fraction=0.03)
     fig.tight_layout()
     return fig
 
 
-def _per_class_figure(per_class, title):
+def _per_class_figure(per_class, title, split="test"):
     fig, ax = plt.subplots(figsize=(8, 4.5))
     order = per_class.sort_values("f1")
     ax.barh(order["class"], order["f1"], color="#4c72b0")
     for y, (f1, n) in enumerate(zip(order["f1"], order["support"])):
         ax.text(f1 + 0.01, y, f"n={n}", va="center", fontsize=7)
     ax.set_xlim(0, 1.1)
-    ax.set_xlabel("test F1")
-    ax.set_title(f"{title}: per class test F1", fontsize=9)
+    ax.set_xlabel(f"{split} F1")
+    ax.set_title(f"{title}: per class {split} F1", fontsize=9)
     fig.tight_layout()
     return fig
 
 
 def report_run(task, model, forward, loaders, class_names, device, history, best_epoch, out_dir, run_name,
-               extra=None, show=True):
+               extra=None, show=True, splits=SPLITS):
     """
     Final evaluation of the selected checkpoint and full ClearML reporting. Returns a flat metrics dict.
-    Logs: single values for every headline metric on train/val/test, learning curves, confusion matrix
+    Logs: single values for every headline metric on each evaluated split, learning curves, confusion matrix
     (interactive and figure), per class table and figure, and artifacts for metrics, history, per clip
     predictions and the checkpoint.
+
+    With splits=("train", "val") (tuning runs) the test set is not evaluated at all and the confusion matrix
+    and per class tables are reported on validation instead.
     """
     logger = task.get_logger()
     os.makedirs(out_dir, exist_ok=True)
-    final = {s: evaluate(model, loaders["train_eval" if s == "train" else s], forward, device) for s in SPLITS}
+    final = {s: evaluate(model, loaders["train_eval" if s == "train" else s], forward, device) for s in splits}
+    held = "test" if "test" in splits else "val"
 
     metrics = {"run": run_name, "best_epoch": int(best_epoch), "epochs_run": int(len(history)),
                "seconds_per_epoch": float(history["epoch_seconds"].mean()),
                "parameters": int(sum(p.numel() for p in model.parameters()))}
-    for s in SPLITS:
+    for s in splits:
         for m in ("loss",) + METRICS:
             metrics[f"{s}_{m}"] = float(final[s][m])
-    metrics["train_test_gap"] = metrics["train_top1"] - metrics["test_top1"]
+    metrics[f"train_{held}_gap"] = metrics["train_top1"] - metrics[f"{held}_top1"]
     metrics.update(extra or {})
     for k, v in metrics.items():
         if isinstance(v, (int, float)):
             logger.report_single_value(k, v)
 
     figures = [
-        ("learning curves", _learning_curves(history, best_epoch, run_name)),
+        ("learning curves", _learning_curves(history, best_epoch, run_name, splits)),
     ]
-    cm = confusion_matrix(final["test"]["labels"], final["test"]["preds"], labels=list(range(len(class_names))))
+    cm = confusion_matrix(final[held]["labels"], final[held]["preds"], labels=list(range(len(class_names))))
     short = [c.split("_", 1)[-1] for c in class_names]
-    logger.report_confusion_matrix("test confusion matrix", "counts", matrix=cm, iteration=0,
+    logger.report_confusion_matrix(f"{held} confusion matrix", "counts", matrix=cm, iteration=0,
                                    xaxis="predicted", yaxis="true", xlabels=short, ylabels=short)
-    figures.append(("test confusion matrix (normalised)", _confusion_figure(cm, class_names, run_name)))
+    figures.append((f"{held} confusion matrix (normalised)", _confusion_figure(cm, class_names, run_name, held)))
 
-    p, r, f1, n = precision_recall_fscore_support(final["test"]["labels"], final["test"]["preds"],
+    p, r, f1, n = precision_recall_fscore_support(final[held]["labels"], final[held]["preds"],
                                                   labels=list(range(len(class_names))), zero_division=0)
     per_class = pd.DataFrame({"class": short, "precision": p, "recall": r, "f1": f1, "support": n}).round(4)
-    logger.report_table("per class test metrics", "test", iteration=0, table_plot=per_class)
-    figures.append(("per class test F1", _per_class_figure(per_class, run_name)))
+    logger.report_table(f"per class {held} metrics", held, iteration=0, table_plot=per_class)
+    figures.append((f"per class {held} F1", _per_class_figure(per_class, run_name, held)))
 
-    summary = pd.DataFrame([{"split": s, **{m: round(metrics[f"{s}_{m}"], 4) for m in ("loss",) + METRICS}} for s in SPLITS])
+    summary = pd.DataFrame([{"split": s, **{m: round(metrics[f"{s}_{m}"], 4) for m in ("loss",) + METRICS}} for s in splits])
     logger.report_table("final metrics", "selected checkpoint", iteration=0, table_plot=summary)
 
     for title, fig in figures:
@@ -292,7 +333,7 @@ def report_run(task, model, forward, loaders, class_names, device, history, best
         plt.close(fig)
 
     preds = []
-    for s in ("val", "test"):
+    for s in [x for x in splits if x != "train"]:
         top5 = np.argsort(-final[s]["probs"], axis=1)[:, :5]
         preds.append(pd.DataFrame({
             "split": s, "filepath": final[s]["filepaths"],
@@ -319,7 +360,7 @@ def report_run(task, model, forward, loaders, class_names, device, history, best
     for name, path in paths.items():
         task.upload_artifact(name, artifact_object=path)
 
-    print(" | ".join(f"{s} top1 {metrics[f'{s}_top1']:.4f} mca {metrics[f'{s}_mca']:.4f}" for s in SPLITS))
+    print(" | ".join(f"{s} top1 {metrics[f'{s}_top1']:.4f} mca {metrics[f'{s}_mca']:.4f}" for s in splits))
     return metrics
 
 
@@ -331,3 +372,81 @@ def mean_std_table(results, group_cols, metric_cols):
         out[m] = [f"{100 * mu:.2f} ± {100 * sd:.2f}" for mu, sd in zip(agg[(m, "mean")], agg[(m, "std")].fillna(0))]
     out["seeds"] = agg[(metric_cols[0], "count")]
     return out.reset_index()
+
+
+# ---------------------------------------------------------------------------
+# multi run summaries
+# ---------------------------------------------------------------------------
+
+DRILL_SESSION = "2023-05-02"
+
+
+def per_class_recall(results, out_root, group_col, order):
+    """Mean test recall per class for each group, from the per class CSVs report_run() wrote."""
+    frames = []
+    for _, r in results.iterrows():
+        pc = pd.read_csv(os.path.join(out_root, r["run"], f"{r['run']}_per_class.csv"))
+        pc[group_col] = r[group_col]
+        frames.append(pc)
+    table = pd.concat(frames).groupby(["class", group_col])["recall"].mean().unstack()
+    return table[list(order)]
+
+
+def accuracy_by_source(results, out_root, group_col, order):
+    """Test accuracy on match footage vs drill session clips, averaged over seeds."""
+    rows = []
+    for _, r in results.iterrows():
+        p = pd.read_csv(os.path.join(out_root, r["run"], f"{r['run']}_predictions.csv"))
+        p = p[p["split"] == "test"]
+        drill = p["filepath"].str.contains(DRILL_SESSION)
+        correct = p["label"] == p["pred"]
+        rows.append({group_col: r[group_col], "match clips": correct[~drill].mean(),
+                     "drill clips": correct[drill].mean(), "n drill": int(drill.sum())})
+    out = pd.DataFrame(rows).groupby(group_col)[["match clips", "drill clips", "n drill"]].mean()
+    return out.loc[list(order)].round(4).reset_index()
+
+
+def recall_heatmap(recall, title, annotate_share=None):
+    fig, ax = plt.subplots(figsize=(1.6 + 1.2 * recall.shape[1], 6))
+    im = ax.imshow(recall.values, cmap="viridis", vmin=0, vmax=1, aspect="auto")
+    ax.set_xticks(range(recall.shape[1]), list(recall.columns), rotation=30, ha="right")
+    labels = list(recall.index) if annotate_share is None else \
+        [f"{c} ({annotate_share.get(c, 0):.0%} drill)" for c in recall.index]
+    ax.set_yticks(range(len(recall)), labels, fontsize=7)
+    for i in range(recall.shape[0]):
+        for j in range(recall.shape[1]):
+            v = recall.iloc[i, j]
+            ax.text(j, i, f"{v:.2f}", ha="center", va="center", fontsize=7, color="white" if v < 0.6 else "black")
+    ax.set_title(title, fontsize=9)
+    fig.colorbar(im, ax=ax, fraction=0.04)
+    fig.tight_layout()
+    return fig
+
+
+def comparison_bars(results, group_col, order, seeds, title, references=None):
+    """Mean ± std bars for test top1, top5 and MCA with individual seeds as dots."""
+    references = references or {}
+    fig, axes = plt.subplots(1, 3, figsize=(max(12, 2 * len(order) + 6), 3.8))
+    x = np.arange(len(order))
+    for ax, m in zip(axes, ["test_top1", "test_top5", "test_mca"]):
+        g = results.groupby(group_col)[m]
+        means, stds = g.mean().loc[list(order)], g.std().loc[list(order)].fillna(0)
+        ax.bar(x, 100 * means, yerr=100 * stds, capsize=4, color="#4c72b0")
+        for i, key in enumerate(order):
+            ax.scatter(np.full((results[group_col] == key).sum(), i),
+                       100 * results.loc[results[group_col] == key, m], color="black", s=8, zorder=3)
+        styles = [("#c44e52", "--"), ("grey", ":"), ("#55a868", "-.")]
+        lows = [means.min() - 0.05]
+        for (name, ref), (colour, ls) in zip(references.items(), styles):
+            key = m.replace("test_", "")
+            if key in ref:
+                ax.axhline(100 * ref[key], color=colour, ls=ls, lw=1, label=name)
+                lows.append(ref[key] - 0.03)
+        ax.set_xticks(x, list(order), rotation=30, ha="right")
+        ax.set_ylim(100 * max(min(lows), 0), 100)
+        ax.set_title(m.replace("_", " "))
+    axes[0].set_ylabel("%")
+    axes[0].legend(frameon=False, fontsize=7)
+    fig.suptitle(f"{title}, mean ± std over {len(seeds)} seeds (dots: individual seeds)", fontsize=10)
+    fig.tight_layout()
+    return fig

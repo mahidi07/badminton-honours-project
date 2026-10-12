@@ -1,0 +1,13 @@
+{
+  "selected": "baseline",
+  "policy": "advanced",
+  "mixup_alpha": 0.0,
+  "tuning": {
+    "seeds": [
+      33,
+      44
+    ],
+    "val_top1": 0.7554417413572343,
+    "baseline_val_top1": 0.7554417413572343
+  }
+}

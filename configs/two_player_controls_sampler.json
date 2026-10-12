@@ -1,0 +1,102 @@
+{
+  "experiment": "two_player_controls_sampler",
+  "report_seeds": [
+    42,
+    123,
+    7
+  ],
+  "target_per_class": 300,
+  "test_mean": {
+    "far": {
+      "test_top1": 0.7148337595907929,
+      "test_mca": 0.616872499729336,
+      "test_macro_f1": 0.6187338511292474
+    },
+    "near": {
+      "test_top1": 0.7271952259164536,
+      "test_mca": 0.6112747133496242,
+      "test_macro_f1": 0.6333718877637632
+    },
+    "both_dup": {
+      "test_top1": 0.7267689684569479,
+      "test_mca": 0.6174976035451696,
+      "test_macro_f1": 0.6319385186780166
+    },
+    "both_shuffled": {
+      "test_top1": 0.7344416027280477,
+      "test_mca": 0.630184131896407,
+      "test_macro_f1": 0.6483058888020405
+    },
+    "both": {
+      "test_top1": 0.7830349531116795,
+      "test_mca": 0.6785628398506862,
+      "test_macro_f1": 0.6931433754370439
+    }
+  },
+  "controls_rule": [
+    {
+      "control": "both_dup",
+      "top1: both - near (pts)": 5.58,
+      "top1: control - near (pts)": -0.04,
+      "top1: retained": -0.01,
+      "mca: both - near (pts)": 6.73,
+      "mca: control - near (pts)": 0.62,
+      "mca: retained": 0.09,
+      "reading (top1)": "gain comes from the real far player"
+    },
+    {
+      "control": "both_shuffled",
+      "top1: both - near (pts)": 5.58,
+      "top1: control - near (pts)": 0.72,
+      "top1: retained": 0.13,
+      "mca: both - near (pts)": 6.73,
+      "mca: control - near (pts)": 1.89,
+      "mca: retained": 0.28,
+      "reading (top1)": "gain comes from the real far player"
+    }
+  ],
+  "differences": [
+    {
+      "comparison": "both - near",
+      "top1 (pts)": 5.58,
+      "top1 95% CI": "[+3.66, +7.50]",
+      "mca (pts)": 6.73,
+      "mca 95% CI": "[+3.58, +9.92]"
+    },
+    {
+      "comparison": "both_shuffled - near",
+      "top1 (pts)": 0.72,
+      "top1 95% CI": "[-0.72, +2.13]",
+      "mca (pts)": 1.89,
+      "mca 95% CI": "[-0.48, +4.25]"
+    },
+    {
+      "comparison": "both_dup - near",
+      "top1 (pts)": -0.04,
+      "top1 95% CI": "[-1.36, +1.24]",
+      "mca (pts)": 0.62,
+      "mca 95% CI": "[-1.19, +2.51]"
+    },
+    {
+      "comparison": "both - both_shuffled",
+      "top1 (pts)": 4.86,
+      "top1 95% CI": "[+2.86, +6.82]",
+      "mca (pts)": 4.84,
+      "mca 95% CI": "[+1.60, +8.00]"
+    },
+    {
+      "comparison": "both - both_dup",
+      "top1 (pts)": 5.63,
+      "top1 95% CI": "[+3.67, +7.54]",
+      "mca (pts)": 6.11,
+      "mca 95% CI": "[+3.36, +8.91]"
+    },
+    {
+      "comparison": "far - near",
+      "top1 (pts)": -1.24,
+      "top1 95% CI": "[-3.88, +1.45]",
+      "mca (pts)": 0.56,
+      "mca 95% CI": "[-3.46, +4.60]"
+    }
+  ]
+}

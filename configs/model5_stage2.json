@@ -1,0 +1,21 @@
+{
+  "stage": 2,
+  "selected": "control",
+  "sampling": "balanced",
+  "target_per_class": 300,
+  "loss": "cross_entropy",
+  "tau": 0.0,
+  "backbone_options": {},
+  "input": "body_court_velocity",
+  "velocity_scale": 28.841716766357422,
+  "tuning": {
+    "seeds": [
+      77,
+      88
+    ],
+    "val_top1": 0.7676,
+    "val_mca": 0.6775,
+    "control_val_top1": 0.7676,
+    "control_val_mca": 0.6775
+  }
+}

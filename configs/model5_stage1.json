@@ -1,0 +1,15 @@
+{
+  "stage": 1,
+  "selected": "control",
+  "backbone_options": {},
+  "input": "body_court_velocity",
+  "velocity_scale": 28.841716766357422,
+  "tuning": {
+    "seeds": [
+      77,
+      88
+    ],
+    "val_top1": 0.7676,
+    "control_val_top1": 0.7676
+  }
+}

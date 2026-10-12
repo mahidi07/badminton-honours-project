@@ -1,0 +1,19 @@
+{
+  "experiment": "ntu60_pretraining",
+  "pretraining_helps": false,
+  "selected": null,
+  "spec": null,
+  "checkpoint": "/workspace/checkpoints/stgcn_ntu60_pretrained/stgcn_ntu60.pth",
+  "reference": "scratch10",
+  "tuning": {
+    "seeds": [
+      77,
+      88
+    ],
+    "selected_val_top1": 0.7548,
+    "selected_val_mca": 0.6479,
+    "scratch10_val_top1": 0.7548,
+    "scratch10_val_mca": 0.6479,
+    "control9_val_top1": 0.7676
+  }
+}
