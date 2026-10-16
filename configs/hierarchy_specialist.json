@@ -1,0 +1,63 @@
+{
+  "experiment": "hierarchy_specialist_test",
+  "seeds": [
+    77,
+    88
+  ],
+  "splits_used": [
+    "train",
+    "val"
+  ],
+  "group": [
+    "Cross Court Flight",
+    "Lift",
+    "Block",
+    "Drop Shot",
+    "Push Shot",
+    "Flat Shot"
+  ],
+  "rule": {
+    "min_gain_group_acc_pts": 2.0,
+    "max_group_mca_drop_pts": 1.0,
+    "gain_in_every_seed": true,
+    "arm": "specialist (step matched schedule)"
+  },
+  "schedule_scale": 3,
+  "sampler_draws": {
+    "flat": 7948,
+    "specialist": 2474
+  },
+  "group_acc_mean_pts": {
+    "flat": 69.0,
+    "specialist": 72.58,
+    "specialist_plain": 70.25
+  },
+  "group_mca_mean_pts": {
+    "flat": 60.18,
+    "specialist": 66.05,
+    "specialist_plain": 64.09
+  },
+  "flat_unrestricted_group_acc_pts": 65.77,
+  "differences": [
+    {
+      "comparison": "specialist - flat",
+      "group acc (pts)": 3.58,
+      "group acc 95% CI": "[-0.18, +7.17]",
+      "group MCA (pts)": 5.87,
+      "group MCA 95% CI": "[+0.80, +10.99]",
+      "implied overall top1 (pts)": 1.21,
+      "by seed (acc pts)": "+5.38, +1.79"
+    },
+    {
+      "comparison": "specialist_plain - flat",
+      "group acc (pts)": 1.25,
+      "group acc 95% CI": "[-2.51, +4.84]",
+      "group MCA (pts)": 3.91,
+      "group MCA 95% CI": "[-0.63, +8.48]",
+      "implied overall top1 (pts)": 0.42,
+      "by seed (acc pts)": "+3.58, -1.08"
+    }
+  ],
+  "passed": true,
+  "split_sha256": "69d5d1a97d26cf9cb9ae34731c004849fb9a8eda3002cd5c568406c659e8bdb4"
+}

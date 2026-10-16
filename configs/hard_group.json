@@ -1,0 +1,145 @@
+{
+  "experiment": "hard_group_final",
+  "source_runs": [
+    "t36_both_advanced_s42",
+    "t36_both_advanced_s123",
+    "t36_both_advanced_s7"
+  ],
+  "splits_used": [
+    "val"
+  ],
+  "rule": {
+    "sizes": [
+      3,
+      7
+    ],
+    "score": "internal errors minus leaking errors, pooled over seeds",
+    "size_choice": "smallest size within 10 percent of the best score",
+    "bootstrap_resamples": 1000
+  },
+  "group_classes": [
+    "Cross Court Flight",
+    "Lift",
+    "Block",
+    "Drop Shot",
+    "Push Shot",
+    "Flat Shot"
+  ],
+  "group_class_names": [
+    "01_Cross Court Flight",
+    "02_Lift",
+    "04_Block",
+    "05_Drop Shot",
+    "06_Push Shot",
+    "15_Flat Shot"
+  ],
+  "group_ids": [
+    1,
+    2,
+    4,
+    5,
+    6,
+    15
+  ],
+  "other_ids": [
+    0,
+    3,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    16,
+    17
+  ],
+  "class_names": [
+    "00_Short Serve",
+    "01_Cross Court Flight",
+    "02_Lift",
+    "03_Tap Smash",
+    "04_Block",
+    "05_Drop Shot",
+    "06_Push Shot",
+    "07_Transitional Slice",
+    "08_Cut",
+    "09_Rush Shot",
+    "10_Defensive Clear",
+    "11_Defensive Drive",
+    "12_Clear",
+    "13_Long Serve",
+    "14_Smash",
+    "15_Flat Shot",
+    "16_Rear Court Flat Drive",
+    "17_Short Flat Shot"
+  ],
+  "score": 110,
+  "internal_errors": 230,
+  "leaking_errors": 120,
+  "purity_pct": 65.7,
+  "internal_share_of_all_errors_pct": 49.9,
+  "train_clips_in_group": 2221,
+  "val_clips_in_group": 279,
+  "bootstrap_inclusion_pct": {
+    "Short Serve": 0.0,
+    "Cross Court Flight": 96.2,
+    "Lift": 100.0,
+    "Tap Smash": 2.2,
+    "Block": 93.8,
+    "Drop Shot": 96.6,
+    "Push Shot": 100.0,
+    "Transitional Slice": 5.9,
+    "Cut": 13.9,
+    "Rush Shot": 0.1,
+    "Defensive Clear": 33.4,
+    "Defensive Drive": 0.2,
+    "Clear": 48.1,
+    "Long Serve": 0.1,
+    "Smash": 5.0,
+    "Flat Shot": 100.0,
+    "Rear Court Flat Drive": 0.6,
+    "Short Flat Shot": 2.5
+  },
+  "ceiling_val_mean": {
+    "group clips detected (%)": 94.27,
+    "coarse precision (%)": 91.64,
+    "within group accuracy (%)": 70.86,
+    "group clips correct now (%)": 66.79,
+    "top1 now": 80.32,
+    "top1 ceiling": 90.14,
+    "MCA now": 70.28,
+    "MCA ceiling": 82.27,
+    "top1 gain": 9.82,
+    "MCA gain": 11.99
+  },
+  "reference_single_player_group": {
+    "classes": [
+      "Lift",
+      "Block",
+      "Drop Shot",
+      "Push Shot",
+      "Cut",
+      "Smash",
+      "Flat Shot"
+    ],
+    "internal": 243,
+    "leak": 183,
+    "score": 60,
+    "purity_pct": 57.0
+  },
+  "split_sha256": "69d5d1a97d26cf9cb9ae34731c004849fb9a8eda3002cd5c568406c659e8bdb4",
+  "selection": "stable core of the rule's result: Clear (48.1% bootstrap inclusion) removed from the seven class group",
+  "rule_selected_group": [
+    "Cross Court Flight",
+    "Lift",
+    "Block",
+    "Drop Shot",
+    "Push Shot",
+    "Clear",
+    "Flat Shot"
+  ],
+  "rule_selected_score": 137,
+  "top1_per_point_within_group": 0.337
+}
